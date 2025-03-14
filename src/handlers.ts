@@ -1,4 +1,4 @@
-import { GenerativeModel } from '@google/generative-ai';
+import { GenerativeModel, GenerateContentStreamResult } from '@google/generative-ai';
 import { 
   GenerateRequest, 
   GenerateResponse, 
@@ -8,8 +8,8 @@ import {
   StreamResponse,
   CancelRequest,
   ConfigureRequest
-} from './types';
-import { createInitializeResult, ERROR_CODES, validateRequest } from './protocol';
+} from './types.js';
+import { createInitializeResult, ERROR_CODES, validateRequest } from './protocol.js';
 import EventEmitter from 'events';
 
 export class MCPHandlers extends EventEmitter {
@@ -35,7 +35,19 @@ export class MCPHandlers extends EventEmitter {
     return {
       jsonrpc: '2.0',
       id: request.id,
-      result: createInitializeResult()
+      result: createInitializeResult(
+        { name: 'gemini-mcp', version: '1.0.0', protocolVersion: '2024-11-05' }, 
+        { 
+          supportedMethods: ['generate', 'stream', 'cancel', 'configure'],
+          streamingSupport: true,
+          multimodalSupport: false,
+          modelInfo: {
+            name: 'gemini-pro',
+            version: '1.0',
+            contextWindow: 32000
+          }
+        }
+      )
     };
   }
 
@@ -50,13 +62,17 @@ export class MCPHandlers extends EventEmitter {
     this.activeRequests.set(request.id, abortController);
 
     try {
-      const result = await this.model.generateContent(
-        request.params.prompt,
-        {
-          temperature: request.params.temperature,
-          maxOutputTokens: request.params.maxTokens,
-          stopSequences: request.params.stopSequences,
+      // Construct request with options
+      const promptWithOptions = {
+        contents: [{ role: 'user', parts: [{ text: request.params.prompt }] }],
+        generationConfig: {
+          ...(request.params.temperature && { temperature: request.params.temperature }),
+          ...(request.params.maxTokens && { maxOutputTokens: request.params.maxTokens }),
+          ...(request.params.stopSequences && { stopSequences: request.params.stopSequences }),
         }
+      };
+      
+      const result = await this.model.generateContent(promptWithOptions
       );
       const response = await result.response;
 
@@ -95,16 +111,20 @@ export class MCPHandlers extends EventEmitter {
     this.activeRequests.set(request.id, abortController);
 
     try {
-      const stream = await this.model.generateContentStream(
-        request.params.prompt,
-        {
-          temperature: request.params.temperature,
-          maxOutputTokens: request.params.maxTokens,
-          stopSequences: request.params.stopSequences,
+      // Construct request with options
+      const promptWithOptions = {
+        contents: [{ role: 'user', parts: [{ text: request.params.prompt }] }],
+        generationConfig: {
+          ...(request.params.temperature && { temperature: request.params.temperature }),
+          ...(request.params.maxTokens && { maxOutputTokens: request.params.maxTokens }),
+          ...(request.params.stopSequences && { stopSequences: request.params.stopSequences }),
         }
+      };
+      
+      const result: GenerateContentStreamResult = await this.model.generateContentStream(promptWithOptions
       );
 
-      for await (const chunk of stream) {
+      for await (const chunk of result.stream) {
         const response: StreamResponse = {
           jsonrpc: '2.0',
           id: request.id,
@@ -140,35 +160,48 @@ export class MCPHandlers extends EventEmitter {
   async handleCancel(request: CancelRequest): Promise<MCPResponse> {
     this.log('Handling cancel request:', request.params);
     
-    if (!validateRequest(request, ['requestId'])) {
-      throw this.createError(ERROR_CODES.INVALID_PARAMS, 'Missing requestId parameter');
+    // Check for either id or requestId
+    if (!request.params.id && !request.params.requestId) {
+      throw this.createError(ERROR_CODES.INVALID_PARAMS, 'Missing id or requestId parameter');
     }
 
-    const requestId = request.params.requestId;
-    const abortController = this.activeRequests.get(requestId);
+    const requestId = request.params.requestId || request.params.id;
+    if (requestId) {
+      const abortController = this.activeRequests.get(requestId);
 
-    if (abortController) {
-      abortController.abort();
-      this.activeRequests.delete(requestId);
-      return {
-        jsonrpc: '2.0',
-        id: request.id,
-        result: { cancelled: true }
-      };
+      if (abortController) {
+        abortController.abort();
+        this.activeRequests.delete(requestId);
+        return {
+          jsonrpc: '2.0',
+          id: request.id,
+          result: { cancelled: true }
+        };
     }
 
     throw this.createError(ERROR_CODES.INVALID_REQUEST, 'Request not found or already completed');
+    }
+    
+    return {
+      jsonrpc: '2.0',
+      id: request.id,
+      result: { cancelled: false, reason: 'Invalid request ID' }
+    };
   }
 
   async handleConfigure(request: ConfigureRequest): Promise<MCPResponse> {
     this.log('Handling configure request:', request.params);
     
-    if (!validateRequest(request, ['configuration'])) {
+    if (!request.params.apiKey && !request.params.model && !request.params.options && !request.params.configuration) {
       throw this.createError(ERROR_CODES.INVALID_PARAMS, 'Missing configuration parameter');
     }
 
     // Update configuration
-    const config = request.params.configuration;
+    const config = request.params.configuration || {
+      apiKey: request.params.apiKey,
+      model: request.params.model,
+      options: request.params.options
+    };
     
     return {
       jsonrpc: '2.0',

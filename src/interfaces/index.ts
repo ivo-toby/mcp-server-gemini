@@ -1,6 +1,6 @@
-export * from './completion';
-export * from './resources';
-export * from './prompts';
+export * from './completion.js';
+export * from './resources.js';
+export * from './prompts.js';
 
 export interface BaseProvider {
   initialize(): Promise<void>;
@@ -9,7 +9,7 @@ export interface BaseProvider {
 }
 
 export interface CompletionProvider extends BaseProvider {
-  complete(argument: CompletionArgument): Promise<Completion>;
+  complete(argument: any): Promise<any>;
 }
 
 export interface ContentProvider extends BaseProvider {

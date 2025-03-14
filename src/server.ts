@@ -1,13 +1,13 @@
-import WebSocket from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { MCPHandlers } from './handlers';
-import { ProtocolManager } from './protocol';
-import { ERROR_CODES } from './protocol';
-import { MCPRequest, NotificationMessage, ConnectionState } from './types';
+import { MCPHandlers } from './handlers.js';
+import { ProtocolManager } from './protocol.js';
+import { ERROR_CODES } from './protocol.js';
+import { MCPRequest, NotificationMessage, ConnectionState } from './types.js';
 import http from 'http';
 
 export class MCPServer {
-  private wss: WebSocket.Server;
+  private wss: WebSocketServer;
   private protocol: ProtocolManager;
   private handlers: MCPHandlers;
   private clients: Map<WebSocket, ConnectionState>;
@@ -27,7 +27,7 @@ export class MCPServer {
     this.httpServer = http.createServer(this.handleHttpRequest.bind(this));
     
     // Create WebSocket server attached to HTTP server
-    this.wss = new WebSocket.Server({ server: this.httpServer });
+    this.wss = new WebSocketServer({ server: this.httpServer });
     
     this.setupWebSocketServer();
     
@@ -98,7 +98,7 @@ export class MCPServer {
           if (request.method === 'initialize') {
             state.initialized = true;
           }
-        } catch (error) {
+        } catch (error: any) {
           this.sendError(ws, request.id, ERROR_CODES.SERVER_NOT_INITIALIZED, error.message);
           return;
         }
@@ -109,7 +109,7 @@ export class MCPServer {
         // Remove request from active requests
         state.activeRequests.delete(request.id);
 
-      } catch (error) {
+      } catch (error: any) {
         this.handleError(ws, error);
       }
     });
@@ -125,7 +125,7 @@ export class MCPServer {
       
       // Cancel any pending requests
       if (state.activeRequests.size > 0) {
-        state.activeRequests.forEach(requestId => {
+        state.activeRequests.forEach((requestId: string | number) => {
           this.handlers.cancelRequest(requestId);
         });
       }
@@ -148,7 +148,7 @@ export class MCPServer {
 
     if (error instanceof SyntaxError) {
       this.sendError(ws, null, ERROR_CODES.PARSE_ERROR, 'Invalid JSON');
-    } else if (error.code && ERROR_CODES[error.code]) {
+    } else if (error.code) {
       this.sendError(ws, null, error.code, error.message);
     } else {
       this.sendError(ws, null, ERROR_CODES.INTERNAL_ERROR, 'Internal server error');
@@ -226,7 +226,7 @@ export class MCPServer {
     // Close all connections
     this.clients.forEach((state, client) => {
       // Cancel any pending requests
-      state.activeRequests.forEach(requestId => {
+      state.activeRequests.forEach((requestId: string | number) => {
         this.handlers.cancelRequest(requestId);
       });
       client.close();

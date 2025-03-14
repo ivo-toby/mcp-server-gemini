@@ -1,4 +1,4 @@
-import { ServerCapabilities, ServerInfo, InitializeResult, ProgressParams } from './types';
+import { ServerCapabilities, ServerInfo, InitializeResult, ProgressParams } from './types.js';
 
 export const PROTOCOL_VERSION = '2024-11-05';
 
@@ -21,15 +21,19 @@ export const ERROR_CODES = {
 
 export const SERVER_INFO: ServerInfo = {
   name: 'gemini-mcp',
-  version: '1.0.0'
+  version: '1.0.0',
+  protocolVersion: PROTOCOL_VERSION
 };
 
 export const SERVER_CAPABILITIES: ServerCapabilities = {
-  experimental: {},
-  prompts: { listChanged: true },
-  resources: { subscribe: true, listChanged: true },
-  tools: { listChanged: true },
-  logging: {}
+  supportedMethods: ['generate', 'stream', 'cancel', 'configure'],
+  streamingSupport: true,
+  multimodalSupport: false,
+  modelInfo: {
+    name: 'gemini-pro',
+    version: '1.0',
+    contextWindow: 32000
+  }
 };
 
 export class ProtocolManager {
@@ -78,4 +82,27 @@ export class ProtocolManager {
       throw new Error('Server is shutting down');
     }
   }
+}
+
+// Standalone utility functions
+export function validateRequest(request: any, requiredParams: string[]): boolean {
+  if (!request || !request.params) {
+    return false;
+  }
+  
+  return requiredParams.every(param => param in request.params);
+}
+
+export function createContentMessage(content: string): any {
+  return {
+    type: 'text',
+    text: content
+  };
+}
+
+export function createInitializeResult(serverInfo: ServerInfo, capabilities: ServerCapabilities): any {
+  return {
+    serverInfo,
+    capabilities
+  };
 }

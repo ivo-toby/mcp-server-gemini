@@ -1,4 +1,4 @@
-import { MCPRequest, MCPResponse } from '../types';
+import { MCPRequest, MCPResponse } from '../types.js';
 
 export interface PromptArgument {
   name: string;
